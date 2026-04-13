@@ -192,13 +192,15 @@ def check_password():
     st.title("🔒 Team Task Manager")
     st.info("アクセスにはパスワードが必要です。")
     
+    # form の中で early return すると Streamlit が「送信ボタンなし」警告を出すため、
+    # 先に secrets の存在を確認してから form を描画する。
+    try:
+        correct_password = str(st.secrets["auth"]["password"]).strip()
+    except Exception:
+        st.error("secrets.toml の [auth] 設定を読み込めません。書式を確認してください。")
+        return False
+
     with st.form("login_form"):
-        # secrets.toml の [auth] password を参照
-        try:
-            correct_password = str(st.secrets["auth"]["password"]).strip()
-        except Exception:
-            st.error("secrets.toml の [auth] 設定を読み込めません。書式を確認してください。")
-            return False
         pwd_input = st.text_input("パスワードを入力してください", type="password")
         
         if st.form_submit_button("ログイン"):
