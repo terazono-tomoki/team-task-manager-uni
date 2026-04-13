@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import sqlite3
 
 class Task:
     def __init__(self, title, description, assignee, due_date, status="ToDo", 
@@ -29,16 +30,115 @@ class Task:
         return self.__dict__
 
 # --- 保存・読み込み ---
-DATA_FILE = "tasks.json"
+DB_FILE = "tasks.db"
+LEGACY_DATA_FILE = "tasks.json"
+
+
+def get_connection():
+    return sqlite3.connect(DB_FILE)
+
+
+def init_db():
+    with get_connection() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                assignee TEXT NOT NULL DEFAULT '',
+                due_date TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'ToDo',
+                priority TEXT NOT NULL DEFAULT 'Medium',
+                progress INTEGER NOT NULL DEFAULT 0,
+                watchers TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+
+
+def load_legacy_tasks():
+    if not os.path.exists(LEGACY_DATA_FILE):
+        return []
+    with open(LEGACY_DATA_FILE, "r", encoding="utf-8") as f:
+        return [Task(**t) for t in json.load(f)]
+
+
+def migrate_legacy_json_if_needed():
+    init_db()
+    with get_connection() as conn:
+        row_count = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+    if row_count > 0:
+        return
+
+    legacy_tasks = load_legacy_tasks()
+    if legacy_tasks:
+        save_tasks(legacy_tasks)
+
 
 def save_tasks(tasks):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump([t.to_dict() for t in tasks], f, ensure_ascii=False, indent=4)
+    init_db()
+    task_rows = [
+        (
+            t.title,
+            t.description,
+            t.assignee,
+            t.due_date,
+            t.status,
+            t.priority,
+            int(t.progress),
+            json.dumps(t.watchers, ensure_ascii=False),
+            t.created_at,
+            t.updated_at,
+        )
+        for t in tasks
+    ]
+
+    with get_connection() as conn:
+        conn.execute("DELETE FROM tasks")
+        conn.executemany(
+            """
+            INSERT INTO tasks (
+                title, description, assignee, due_date, status,
+                priority, progress, watchers, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            task_rows,
+        )
+
 
 def load_tasks():
-    if not os.path.exists(DATA_FILE): return []
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        return [Task(**t) for t in json.load(f)]
+    migrate_legacy_json_if_needed()
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                title, description, assignee, due_date, status,
+                priority, progress, watchers, created_at, updated_at
+            FROM tasks
+            ORDER BY id
+            """
+        ).fetchall()
+
+    tasks = []
+    for row in rows:
+        tasks.append(
+            Task(
+                title=row[0],
+                description=row[1],
+                assignee=row[2],
+                due_date=row[3],
+                status=row[4],
+                priority=row[5],
+                progress=row[6],
+                watchers=json.loads(row[7]) if row[7] else [],
+                created_at=row[8],
+                updated_at=row[9],
+            )
+        )
+    return tasks
 
 # --- メイン処理 ---
 def main():

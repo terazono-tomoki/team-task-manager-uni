@@ -13,12 +13,20 @@
 - **タスク更新 (Update)**: 進捗状況（未着手 / 進行中 / 完了）の変更。
 - **タスク削除 (Delete)**: 完了したタスクや誤登録したタスクの削除。
 
-## 3. 技術スタック（予定）
+## 3. 技術スタック
 - **Language**: Python 3.x
 - **Database**: SQLite (軽量かつ標準的なリレーショナルデータベース)
-- **Framework/Library**: (開発が進み次第追記します)
+- **Framework/Library**: Streamlit
 - **Version Control**: GitHub
 
-## 4. 今後の展望
+## 4. 起動方法
+- CLI版:
+  `python main.py`
+- Web UI版:
+  `streamlit run app.py`
+
+初回起動時に `tasks.db` が自動作成されます。既存の `tasks.json` がある場合は、初回読み込み時に SQLite へ移行されます。
+
+## 5. 今後の展望
 - 期限が近いタスクのハイライト表示機能。
 - チーム全体の進捗率の自動計算・グラフ化。
