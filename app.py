@@ -12,6 +12,52 @@ st.set_page_config(page_title="Team Task Manager", page_icon="📋", layout="wid
 
 LOCAL_DB_FILE = "tasks.db"
 
+def _ensure_notification_logs_table(con: sqlite3.Connection) -> None:
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS notification_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            time_str TEXT NOT NULL,
+            message TEXT NOT NULL,
+            level TEXT NOT NULL DEFAULT 'info'
+        )
+        """
+    )
+
+def load_notification_logs_from_db() -> list:
+    """前回までに保存した通知ログを読み込む。"""
+    try:
+        with sqlite3.connect(LOCAL_DB_FILE) as con:
+            _ensure_notification_logs_table(con)
+            rows = con.execute(
+                "SELECT time_str, message, level FROM notification_logs ORDER BY id ASC"
+            ).fetchall()
+            return [{"time": r[0], "message": r[1], "level": r[2]} for r in rows]
+    except Exception:
+        return []
+
+def append_notification_log_to_db(entry: dict) -> None:
+    """通知1件を永続化する。"""
+    try:
+        with sqlite3.connect(LOCAL_DB_FILE) as con:
+            _ensure_notification_logs_table(con)
+            con.execute(
+                "INSERT INTO notification_logs (time_str, message, level) VALUES (?, ?, ?)",
+                (entry["time"], entry["message"], entry["level"]),
+            )
+            con.commit()
+    except Exception:
+        pass
+
+def clear_notification_logs_db() -> None:
+    try:
+        with sqlite3.connect(LOCAL_DB_FILE) as con:
+            _ensure_notification_logs_table(con)
+            con.execute("DELETE FROM notification_logs")
+            con.commit()
+    except Exception:
+        pass
+
 def get_gsheets_connection():
     """接続失敗時は None を返してフォールバック可能にする。"""
     try:
@@ -294,14 +340,16 @@ if "current_page" not in st.session_state:
 if "edit_target_idx" not in st.session_state:
     st.session_state.edit_target_idx = 0
 if "notifications" not in st.session_state:
-    st.session_state.notifications = []
+    st.session_state.notifications = load_notification_logs_from_db()
 
 def notify_ui(watchers, message, level="info"):
-    now = datetime.datetime.now().strftime('%H:%M')
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     target = watchers if watchers else "全員"
     full_msg = f"🔔 {target} へ: {message}"
     st.toast(full_msg)
-    st.session_state.notifications.append({"time": now, "message": full_msg, "level": level})
+    entry = {"time": now, "message": full_msg, "level": level}
+    st.session_state.notifications.append(entry)
+    append_notification_log_to_db(entry)
 
 # --- 5. サイドバー ---
 with st.sidebar:
@@ -320,6 +368,7 @@ with st.sidebar:
             else: st.info(line)
         if st.button("ログをクリア"):
             st.session_state.notifications = []
+            clear_notification_logs_db()
             st.rerun()
     else:
         st.write("新しい通知はありません。")
